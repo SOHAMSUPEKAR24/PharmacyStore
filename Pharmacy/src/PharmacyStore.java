@@ -1,275 +1,185 @@
+import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
+import java.awt.*;
 import java.sql.*;
-import java.util.*;
-
-class Medicine {
-    String name;
-    String disease;
-    int quantity;
-    String expiryDate;
-
-    public Medicine(String name, String disease, int quantity, String expiryDate) {
-        this.name = name;
-        this.disease = disease;
-        this.quantity = quantity;
-        this.expiryDate = expiryDate;
-    }
-
-    @Override
-    public String toString() {
-        return name + " | Expiry: " + expiryDate + " | Quantity: " + quantity;
-    }
-}
 
 public class PharmacyStore {
-    static final String DB_URL = "jdbc:mysql://localhost:3306/pharmacy";
-    static final String USER = "root";
-    static final String PASS = "soham2005";
-    static Scanner sc = new Scanner(System.in);
+    private static final String DB_URL = "jdbc:mysql://localhost:3306/pharmacy";
+    private static final String USER = "root";
+    private static final String PASS = "soham2005";
 
-    public static Connection connectDB() throws SQLException {
+    private JFrame frame;
+    private JTable table;
+    private DefaultTableModel tableModel;
+
+    public PharmacyStore() {
+        frame = new JFrame("Pharmacy Store");
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setLayout(new BorderLayout());
+
+        // Using GridLayout for better visibility of buttons
+        JPanel panel = new JPanel(new GridLayout(1, 5, 5, 5));
+
+        JButton addButton = new JButton("Add Medicine");
+        JButton viewButton = new JButton("View Medicines");
+        JButton retrieveButton = new JButton("Retrieve Medicine");
+        JButton deleteButton = new JButton("Delete Medicine");
+        JButton searchButton = new JButton("Search Medicine");
+
+        panel.add(addButton);
+        panel.add(viewButton);
+        panel.add(retrieveButton);
+        panel.add(deleteButton);
+        panel.add(searchButton);
+
+        frame.add(panel, BorderLayout.NORTH);
+
+        tableModel = new DefaultTableModel(new String[]{"ID", "Name", "Disease", "Quantity", "Expiry"}, 0);
+        table = new JTable(tableModel);
+        frame.add(new JScrollPane(table), BorderLayout.CENTER);
+
+        addButton.addActionListener(e -> addMedicine());
+        viewButton.addActionListener(e -> loadMedicines());
+        retrieveButton.addActionListener(e -> retrieveMedicine());
+        deleteButton.addActionListener(e -> deleteMedicine());
+        searchButton.addActionListener(e -> searchMedicine());
+
+        frame.pack();
+        frame.setVisible(true);
+    }
+
+    private Connection connectDB() throws SQLException {
         return DriverManager.getConnection(DB_URL, USER, PASS);
     }
 
-    public static void createTable() {
-        try (Connection conn = connectDB();
-             Statement stmt = conn.createStatement()) {
-            String sql = "CREATE TABLE IF NOT EXISTS medicines ("
-                    + "id INT AUTO_INCREMENT PRIMARY KEY,"
-                    + "name VARCHAR(100),"
-                    + "disease VARCHAR(100),"
-                    + "quantity INT,"
-                    + "expiry_date VARCHAR(10))";
-            stmt.executeUpdate(sql);
+    private void addMedicine() {
+        try {
+            String name = JOptionPane.showInputDialog("Enter medicine name:");
+            String disease = JOptionPane.showInputDialog("Enter disease:");
+            String quantityStr = JOptionPane.showInputDialog("Enter quantity:");
+            String expiry = JOptionPane.showInputDialog("Enter expiry date (YYYY-MM):");
+
+            if (name.isEmpty() || disease.isEmpty() || quantityStr.isEmpty() || expiry.isEmpty()) {
+                JOptionPane.showMessageDialog(frame, "All fields are required!", "Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+
+            int quantity = Integer.parseInt(quantityStr);
+
+            try (Connection conn = connectDB();
+                 PreparedStatement pstmt = conn.prepareStatement("INSERT INTO medicines (name, disease, quantity, expiry_date) VALUES (?, ?, ?, ?)")) {
+                pstmt.setString(1, name);
+                pstmt.setString(2, disease);
+                pstmt.setInt(3, quantity);
+                pstmt.setString(4, expiry);
+                pstmt.executeUpdate();
+                JOptionPane.showMessageDialog(frame, "Medicine added successfully!");
+                loadMedicines();
+            }
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(frame, "Invalid quantity! Please enter a number.", "Error", JOptionPane.ERROR_MESSAGE);
         } catch (SQLException e) {
             e.printStackTrace();
         }
     }
 
-    public static void addMedicine() {
-        System.out.print("Enter medicine name: ");
-        String name = sc.nextLine();
-
-        System.out.print("Enter disease: ");
-        String disease = sc.nextLine();
-
-        System.out.print("Enter quantity: ");
-        int quantity = sc.nextInt();
-        sc.nextLine();
-
-        System.out.print("Enter expiry date (YYYY-MM): ");
-        String expiry = sc.nextLine();
-
-        try (Connection conn = connectDB();
-             PreparedStatement pstmt = conn.prepareStatement("INSERT INTO medicines (name, disease, quantity, expiry_date) VALUES (?, ?, ?, ?)");) {
-            pstmt.setString(1, name);
-            pstmt.setString(2, disease);
-            pstmt.setInt(3, quantity);
-            pstmt.setString(4, expiry);
-            pstmt.executeUpdate();
-            System.out.println("Medicine added successfully!");
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public static void displayDiseases() {
+    private void loadMedicines() {
+        tableModel.setRowCount(0);
         try (Connection conn = connectDB();
              Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT DISTINCT disease FROM medicines");) {
-            List<String> diseases = new ArrayList<>();
+             ResultSet rs = stmt.executeQuery("SELECT * FROM medicines")) {
             while (rs.next()) {
-                diseases.add(rs.getString("disease"));
+                tableModel.addRow(new Object[]{rs.getInt("id"), rs.getString("name"), rs.getString("disease"), rs.getInt("quantity"), rs.getString("expiry_date")});
             }
-
-            if (diseases.isEmpty()) {
-                System.out.println("No diseases available.");
-                return;
-            }
-
-            System.out.println("Available Diseases:");
-            for (int i = 0; i < diseases.size(); i++) {
-                System.out.println((i + 1) + ". " + diseases.get(i));
-            }
-
-            System.out.print("Select a disease: ");
-            int choice = sc.nextInt();
-            sc.nextLine();
-
-            if (choice < 1 || choice > diseases.size()) {
-                System.out.println("Invalid choice!");
-                return;
-            }
-
-            displayMedicinesByDisease(diseases.get(choice - 1));
         } catch (SQLException e) {
             e.printStackTrace();
         }
     }
 
-    public static void displayMedicinesByDisease(String disease) {
+    private void retrieveMedicine() {
+        int selectedRow = table.getSelectedRow();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(frame, "Please select a medicine to retrieve.");
+            return;
+        }
+
+        int id = (int) tableModel.getValueAt(selectedRow, 0);
+        int currentQuantity = (int) tableModel.getValueAt(selectedRow, 3);
+        String quantityStr = JOptionPane.showInputDialog("Enter quantity to retrieve:");
+
+        try {
+            int quantity = Integer.parseInt(quantityStr);
+            if (quantity <= 0 || quantity > currentQuantity) {
+                JOptionPane.showMessageDialog(frame, "Invalid quantity! Must be between 1 and " + currentQuantity);
+                return;
+            }
+
+            try (Connection conn = connectDB();
+                 PreparedStatement pstmt = conn.prepareStatement("UPDATE medicines SET quantity = quantity - ? WHERE id = ?")) {
+                pstmt.setInt(1, quantity);
+                pstmt.setInt(2, id);
+                pstmt.executeUpdate();
+                JOptionPane.showMessageDialog(frame, "Medicine retrieved successfully!");
+                loadMedicines();
+            }
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(frame, "Invalid quantity! Please enter a number.", "Error", JOptionPane.ERROR_MESSAGE);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void deleteMedicine() {
+        int selectedRow = table.getSelectedRow();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(frame, "Please select a medicine to delete.");
+            return;
+        }
+
+        int id = (int) tableModel.getValueAt(selectedRow, 0);
+
+        int confirm = JOptionPane.showConfirmDialog(frame, "Are you sure you want to delete this medicine?", "Confirm Deletion", JOptionPane.YES_NO_OPTION);
+        if (confirm != JOptionPane.YES_OPTION) return;
+
         try (Connection conn = connectDB();
-             PreparedStatement pstmt = conn.prepareStatement("SELECT * FROM medicines WHERE disease = ?");) {
-            pstmt.setString(1, disease);
+             PreparedStatement pstmt = conn.prepareStatement("DELETE FROM medicines WHERE id = ?")) {
+            pstmt.setInt(1, id);
+            pstmt.executeUpdate();
+            JOptionPane.showMessageDialog(frame, "Medicine deleted successfully!");
+            loadMedicines();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void searchMedicine() {
+        String searchQuery = JOptionPane.showInputDialog("Enter medicine name to search:");
+        if (searchQuery == null || searchQuery.trim().isEmpty()) {
+            JOptionPane.showMessageDialog(frame, "Search query cannot be empty.");
+            return;
+        }
+
+        tableModel.setRowCount(0);
+        try (Connection conn = connectDB();
+             PreparedStatement pstmt = conn.prepareStatement("SELECT * FROM medicines WHERE name LIKE ?")) {
+            pstmt.setString(1, "%" + searchQuery + "%");
             ResultSet rs = pstmt.executeQuery();
 
-            List<Medicine> medicines = new ArrayList<>();
+            boolean found = false;
             while (rs.next()) {
-                medicines.add(new Medicine(rs.getString("name"), disease, rs.getInt("quantity"), rs.getString("expiry_date")));
+                tableModel.addRow(new Object[]{rs.getInt("id"), rs.getString("name"), rs.getString("disease"), rs.getInt("quantity"), rs.getString("expiry_date")});
+                found = true;
             }
 
-            if (medicines.isEmpty()) {
-                System.out.println("No medicines available for this disease.");
-                return;
-            }
-
-            for (Medicine med : medicines) {
-                System.out.println(med);
+            if (!found) {
+                JOptionPane.showMessageDialog(frame, "No medicines found with the given name.");
             }
         } catch (SQLException e) {
             e.printStackTrace();
         }
     }
-    public static void retrieveMedicine() {
-        try (Connection conn = connectDB();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT DISTINCT disease FROM medicines")) {
-
-            List<String> diseases = new ArrayList<>();
-            while (rs.next()) {
-                diseases.add(rs.getString("disease"));
-            }
-
-            if (diseases.isEmpty()) {
-                System.out.println("No diseases available.");
-                return;
-            }
-
-            System.out.println("Available Diseases:");
-            for (int i = 0; i < diseases.size(); i++) {
-                System.out.println((i + 1) + ". " + diseases.get(i));
-            }
-
-            System.out.print("Select a disease (enter number): ");
-            if (!sc.hasNextInt()) {
-                System.out.println("Invalid input! Please enter a number.");
-                sc.nextLine(); // Consume incorrect input
-                return;
-            }
-            int diseaseChoice = sc.nextInt();
-            sc.nextLine();
-
-            if (diseaseChoice < 1 || diseaseChoice > diseases.size()) {
-                System.out.println("Invalid choice!");
-                return;
-            }
-
-            String selectedDisease = diseases.get(diseaseChoice - 1);
-
-            // Display available medicines for the selected disease
-            List<Medicine> medicines = new ArrayList<>();
-            try (PreparedStatement pstmt = conn.prepareStatement("SELECT * FROM medicines WHERE disease = ?")) {
-                pstmt.setString(1, selectedDisease);
-                ResultSet medRs = pstmt.executeQuery();
-
-                while (medRs.next()) {
-                    medicines.add(new Medicine(
-                            medRs.getString("name"),
-                            selectedDisease,
-                            medRs.getInt("quantity"),
-                            medRs.getString("expiry_date")));
-                }
-            }
-
-            if (medicines.isEmpty()) {
-                System.out.println("No medicines available for this disease.");
-                return;
-            }
-
-            System.out.println("Available Medicines:");
-            for (int i = 0; i < medicines.size(); i++) {
-                System.out.println((i + 1) + ". " + medicines.get(i));
-            }
-
-            System.out.print("Select a medicine (enter number): ");
-            if (!sc.hasNextInt()) {
-                System.out.println("Invalid input! Please enter a number.");
-                sc.nextLine(); // Consume incorrect input
-                return;
-            }
-            int medChoice = sc.nextInt();
-            sc.nextLine();
-
-            if (medChoice < 1 || medChoice > medicines.size()) {
-                System.out.println("Invalid medicine choice!");
-                return;
-            }
-
-            Medicine selectedMedicine = medicines.get(medChoice - 1);
-
-            System.out.print("Enter quantity to take: ");
-            if (!sc.hasNextInt()) {
-                System.out.println("Invalid input! Please enter a valid number.");
-                sc.nextLine();
-                return;
-            }
-            int takeQuantity = sc.nextInt();
-            sc.nextLine();
-
-            if (takeQuantity <= 0 || takeQuantity > selectedMedicine.quantity) {
-                System.out.println("Not enough stock available or invalid quantity!");
-                return;
-            }
-
-            // Update the medicine stock
-            try (PreparedStatement pstmt = conn.prepareStatement(
-                    "UPDATE medicines SET quantity = quantity - ? WHERE name = ? AND disease = ?")) {
-                pstmt.setInt(1, takeQuantity);
-                pstmt.setString(2, selectedMedicine.name);
-                pstmt.setString(3, selectedDisease);
-                int updated = pstmt.executeUpdate();
-
-                if (updated > 0) {
-                    System.out.println("Medicine retrieved successfully!");
-                } else {
-                    System.out.println("Failed to retrieve medicine!");
-                }
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-
-
 
     public static void main(String[] args) {
-        createTable();
-        while (true) {
-            System.out.println("\nPharmacy Store Management");
-            System.out.println("1. Add Medicine");
-            System.out.println("2. View Medicines");
-            System.out.println("3. Retrieve Medicine");
-            System.out.println("4. Exit");
-            System.out.print("Choose an option: ");
-
-            int option = sc.nextInt();
-            sc.nextLine();
-
-            switch (option) {
-                case 1:
-                    addMedicine();
-                    break;
-                case 2:
-                    displayDiseases();
-                    break;
-                case 3:
-                    retrieveMedicine();
-                    break;
-                case 4:
-                    System.out.println("Exiting...");
-                    return;
-                default:
-                    System.out.println("Invalid option!");
-            }
-        }
+        new PharmacyStore();
     }
 }
